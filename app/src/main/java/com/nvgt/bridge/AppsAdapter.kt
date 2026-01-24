@@ -6,7 +6,10 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
+import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import android.os.Bundle
 import androidx.recyclerview.widget.RecyclerView
 
 sealed class AppListItem {
@@ -71,14 +74,48 @@ class AppsAdapter(
 					true
 				}
 
-				ViewCompat.setAccessibilityDelegate(appHolder.itemView, null)
-				ViewCompat.addAccessibilityAction(
-					appHolder.itemView,
-					"Configure settings for ${app.name}"
-				) { _, _ ->
-					onAppLongClicked(app)
-					true
-				}
+				ViewCompat.setAccessibilityDelegate(appHolder.itemView, object : AccessibilityDelegateCompat() {
+					override fun onInitializeAccessibilityNodeInfo(
+						host: View,
+						info: AccessibilityNodeInfoCompat
+					) {
+						super.onInitializeAccessibilityNodeInfo(host, info)
+						
+						// Manually construct the content description to ensure "AppName, On/Off" order
+						// and explicit state reporting on all Android versions.
+						val stateText = if (app.isEnabled) "on" else "off"
+						info.contentDescription = "${app.name}, $stateText"
+						
+						// Use Switch class name for the role announcement
+						info.className = SwitchCompat::class.java.name
+						
+						// Disable isCheckable to prevent default "Checked/Ticked" announcements
+						// which would duplicate our manual state text.
+						info.isCheckable = false
+						
+						info.addAction(
+							AccessibilityNodeInfoCompat.AccessibilityActionCompat(
+								R.id.accessibility_action_configure,
+								"Configure settings for ${app.name}"
+							)
+						)
+						
+						// Ensure click action is reported (important since isCheckable is false)
+						info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+					}
+
+					override fun performAccessibilityAction(
+						host: View,
+						action: Int,
+						args: Bundle?
+					): Boolean {
+						if (action == R.id.accessibility_action_configure) {
+							onAppLongClicked(app)
+							return true
+						}
+						return super.performAccessibilityAction(host, action, args)
+					}
+				})
 				
 				appHolder.appSwitch.setOnClickListener {
 					val newState = appHolder.appSwitch.isChecked

@@ -64,11 +64,7 @@ class NvgtBridgeService : AccessibilityService() {
 		}
 	}
 
-	private val servicesStateChangeListener = AccessibilityManager.AccessibilityServicesStateChangeListener {
-		if (!isOtherTouchExplorationEnabled()) {
-			disableDirectTouch()
-		}
-	}
+	private var serviceStateListener: Any? = null
 
 	private val preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
 		if (key == KEY_ENABLED_APPS) {
@@ -88,11 +84,28 @@ class NvgtBridgeService : AccessibilityService() {
 		prefs.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
 		
 		accessibilityManager = getSystemService(ACCESSIBILITY_SERVICE) as? AccessibilityManager
-		accessibilityManager?.addAccessibilityServicesStateChangeListener(servicesStateChangeListener)
+		
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+			val listener = AccessibilityManager.AccessibilityServicesStateChangeListener {
+				if (!isOtherTouchExplorationEnabled()) {
+					disableDirectTouch()
+				}
+			}
+			serviceStateListener = listener
+			accessibilityManager?.addAccessibilityServicesStateChangeListener(listener)
+		} else {
+			val listener = AccessibilityManager.TouchExplorationStateChangeListener {
+				if (!isOtherTouchExplorationEnabled()) {
+					disableDirectTouch()
+				}
+			}
+			serviceStateListener = listener
+			accessibilityManager?.addTouchExplorationStateChangeListener(listener)
+		}
 		
 		vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-			val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-			vibratorManager.defaultVibrator
+			val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+			vibratorManager?.defaultVibrator
 		} else {
 			@Suppress("DEPRECATION")
 			getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
@@ -115,7 +128,17 @@ class NvgtBridgeService : AccessibilityService() {
 		super.onDestroy()
 		unregisterReceiver(screenReceiver)
 		prefs.unregisterOnSharedPreferenceChangeListener(preferenceChangeListener)
-		accessibilityManager?.removeAccessibilityServicesStateChangeListener(servicesStateChangeListener)
+		
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+			(serviceStateListener as? AccessibilityManager.AccessibilityServicesStateChangeListener)?.let {
+				accessibilityManager?.removeAccessibilityServicesStateChangeListener(it)
+			}
+		} else {
+			(serviceStateListener as? AccessibilityManager.TouchExplorationStateChangeListener)?.let {
+				accessibilityManager?.removeTouchExplorationStateChangeListener(it)
+			}
+		}
+
 		handler.removeCallbacks(updateRunnable)
 		targetCache.clear()
 		directTypingCache.clear()
@@ -203,7 +226,7 @@ class NvgtBridgeService : AccessibilityService() {
 	}
 
 	private fun scanNodeForDialogs(node: AccessibilityNodeInfo, depth: Int): Boolean {
-		if (depth > 10) return false
+		if (depth > 5) return false
 
 		val className = node.className?.toString() ?: ""
 		
@@ -305,7 +328,9 @@ class NvgtBridgeService : AccessibilityService() {
 		if (!keepPackage) currentNvgtPackage = null
 		
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-			setTouchExplorationPassthroughRegion(0, Region())
+			try {
+				setTouchExplorationPassthroughRegion(0, Region())
+			} catch (_: Exception) {}
 		}
 		playHapticFeedback(false)
 	}
@@ -337,7 +362,9 @@ class NvgtBridgeService : AccessibilityService() {
 		}
 
 		if (!finalRegion.isEmpty) {
-			setTouchExplorationPassthroughRegion(0, finalRegion)
+			try {
+				setTouchExplorationPassthroughRegion(0, finalRegion)
+			} catch (_: Exception) {}
 		}
 	}
 
