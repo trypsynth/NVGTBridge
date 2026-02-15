@@ -4,6 +4,7 @@ import java.io.FileInputStream
 plugins {
 	alias(libs.plugins.android.application)
 	alias(libs.plugins.kotlin.android)
+	alias(libs.plugins.compose.compiler)
 }
 
 val localProperties = Properties()
@@ -20,8 +21,8 @@ android {
 		applicationId = "com.nvgt.bridge"
 		minSdk = 30
 		targetSdk = 36
-		versionCode = 2
-		versionName = "1.1"
+		versionCode = 3
+		versionName = "1.2"
 
 		testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 	}
@@ -52,6 +53,10 @@ android {
 	kotlinOptions {
 		jvmTarget = "11"
 	}
+
+	buildFeatures {
+		compose = true
+	}
 }
 
 dependencies {
@@ -62,6 +67,15 @@ dependencies {
 	implementation(libs.androidx.recyclerview)
 	implementation(libs.kotlinx.coroutines.android)
 	implementation(libs.androidx.lifecycle.runtime.ktx)
+
+	implementation(platform(libs.androidx.compose.bom))
+	implementation(libs.androidx.ui)
+	implementation(libs.androidx.ui.graphics)
+	implementation(libs.androidx.ui.tooling.preview)
+	implementation(libs.androidx.material3)
+	implementation(libs.androidx.activity.compose)
+	debugImplementation(libs.androidx.ui.tooling)
+
 	testImplementation(libs.junit)
 	androidTestImplementation(libs.androidx.junit)
 	androidTestImplementation(libs.androidx.espresso.core)

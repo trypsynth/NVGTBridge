@@ -4,22 +4,38 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.Menu
-import android.view.MenuItem
-import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,129 +44,77 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-class SettingsActivity : AppCompatActivity() {
+sealed class AppListItem {
+	data class Header(val title: String) : AppListItem()
+	data class App(val appInfo: AppInfo) : AppListItem()
+}
 
-	private lateinit var appsAdapter: AppsAdapter
-	private val appsList = mutableListOf<AppInfo>()
-	private val enabledApps = mutableSetOf<String>()
-	private var currentSearchQuery = ""
+class SettingsActivity : ComponentActivity() {
 
-	private val backupLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-		if (result.resultCode == Activity.RESULT_OK) {
-			result.data?.data?.let { uri ->
-				performBackup(uri)
-			}
-		}
-	}
-
-	private val restoreLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-		if (result.resultCode == Activity.RESULT_OK) {
-			result.data?.data?.let { uri ->
-				performRestore(uri)
-			}
-		}
-	}
+	private val appsList = mutableStateListOf<AppInfo>()
+	private var enabledApps by mutableStateOf(setOf<String>())
+	private var hapticsEnabled by mutableStateOf(true)
+	private var searchQuery by mutableStateOf("")
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
-		setContentView(R.layout.activity_settings)
-
-		val toolbar: Toolbar = findViewById(R.id.toolbar)
-		setSupportActionBar(toolbar)
 
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
-
-		val hapticSwitch: SwitchCompat = findViewById(R.id.master_haptic_switch)
-		hapticSwitch.isChecked = prefs.getBoolean("haptics_enabled", true)
-		hapticSwitch.setOnCheckedChangeListener { _, isChecked ->
-			prefs.edit().putBoolean("haptics_enabled", isChecked).apply()
-		}
-
+		hapticsEnabled = prefs.getBoolean("haptics_enabled", true)
 		loadEnabledApps()
-		
-		val recyclerView: RecyclerView = findViewById(R.id.apps_recycler_view)
-		recyclerView.layoutManager = LinearLayoutManager(this)
-		
-		appsAdapter = AppsAdapter(emptyList(), 
-			onSwitchChanged = { app, isEnabled ->
-				val index = appsList.indexOfFirst { it.packageName == app.packageName }
-				if (index != -1) {
-					appsList[index].isEnabled = isEnabled
-					
-					if (isEnabled) {
-						enabledApps.add(app.packageName)
-					} else {
-						enabledApps.remove(app.packageName)
-					}
-					saveEnabledApps()
-					
-					// Update list to reflect move between sections
-					lifecycleScope.launch {
-						updateAppList(currentSearchQuery)
-					}
-				}
-			},
-			onAppLongClicked = { app ->
-				showAppConfigDialog(app)
-			}
-		)
-		recyclerView.adapter = appsAdapter
 
 		lifecycleScope.launch {
 			loadInstalledApps()
-			updateAppList(currentSearchQuery)
 		}
 
-		val searchEditText: EditText = findViewById(R.id.search_edit_text)
-		searchEditText.addTextChangedListener(object : TextWatcher {
-			override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-			override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-				currentSearchQuery = s.toString()
-				lifecycleScope.launch {
-					updateAppList(currentSearchQuery)
-				}
+		setContent {
+			MaterialTheme {
+				SettingsScreen(
+					hapticsEnabled = hapticsEnabled,
+					onHapticsChanged = { enabled ->
+						hapticsEnabled = enabled
+						prefs.edit().putBoolean("haptics_enabled", enabled).apply()
+					},
+					searchQuery = searchQuery,
+					onSearchQueryChanged = { query -> searchQuery = query },
+					appsList = appsList,
+					enabledApps = enabledApps,
+					onAppToggle = { app, isEnabled ->
+						toggleApp(app, isEnabled)
+					},
+					onAppConfigure = { app ->
+						showAppConfigDialog(app)
+					},
+					onBackup = { uri -> performBackup(uri) },
+					onRestore = { uri -> performRestore(uri) }
+				)
 			}
-
-			override fun afterTextChanged(s: Editable?) {}
-		})
+		}
 	}
 
-	private suspend fun updateAppList(query: String) {
-		val newItems = withContext(Dispatchers.Default) {
-			val filtered = if (query.isEmpty()) {
-				appsList
-			} else {
-				appsList.filter { it.name.contains(query, ignoreCase = true) }
-			}
-
-			val enabled = filtered.filter { it.isEnabled }.sortedBy { it.name }
-			val disabled = filtered.filter { !it.isEnabled }.sortedBy { it.name }
-
-			val items = mutableListOf<AppListItem>()
-
-			if (enabled.isNotEmpty()) {
-				items.add(AppListItem.Header("Direct Touch Enabled Apps"))
-				items.addAll(enabled.map { AppListItem.App(it) })
-			}
-
-			if (disabled.isNotEmpty()) {
-				items.add(AppListItem.Header("All Apps"))
-				items.addAll(disabled.map { AppListItem.App(it) })
-			}
-			items
+	private fun toggleApp(app: AppInfo, isEnabled: Boolean) {
+		app.isEnabled = isEnabled
+		val newEnabledApps = enabledApps.toMutableSet()
+		if (isEnabled) {
+			newEnabledApps.add(app.packageName)
+		} else {
+			newEnabledApps.remove(app.packageName)
 		}
-
-		appsAdapter.updateItems(newItems)
+		enabledApps = newEnabledApps
+		saveEnabledApps()
+		
+		val index = appsList.indexOfFirst { it.packageName == app.packageName }
+		if (index != -1) {
+			appsList[index] = app.copy(isEnabled = isEnabled)
+		}
 	}
 
 	private fun showAppConfigDialog(app: AppInfo) {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 		val keyDirectTyping = "direct_typing_${app.packageName}"
-		
 		var isDirectTyping = prefs.getBoolean(keyDirectTyping, false)
 
-		val builder = AlertDialog.Builder(this)
+		val builder = android.app.AlertDialog.Builder(this)
 		builder.setTitle("Configure settings for ${app.name}")
 		
 		val options = arrayOf("Direct Typing (Don't cut out keyboard)")
@@ -164,9 +128,11 @@ class SettingsActivity : AppCompatActivity() {
 
 		builder.setPositiveButton("Save") { _, _ ->
 			prefs.edit().putBoolean(keyDirectTyping, isDirectTyping).apply()
-			
 			app.directTyping = isDirectTyping
-			appsAdapter.notifyDataSetChanged()
+			val index = appsList.indexOfFirst { it.packageName == app.packageName }
+			if (index != -1) {
+				appsList[index] = app.copy(directTyping = isDirectTyping)
+			}
 		}
 
 		builder.setNegativeButton("Cancel", null)
@@ -180,6 +146,7 @@ class SettingsActivity : AppCompatActivity() {
 			val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 			
 			val tempAppList = mutableListOf<AppInfo>()
+			val newEnabledSet = enabledApps.toMutableSet()
 			var newNativeAppsFound = false
 			
 			for (packageInfo in packages) {
@@ -188,12 +155,12 @@ class SettingsActivity : AppCompatActivity() {
 					val appIcon = packageInfo.loadIcon(pm)
 					val packageName = packageInfo.packageName
 					
-					var isEnabled = enabledApps.contains(packageName)
+					var isEnabled = newEnabledSet.contains(packageName)
 					
 					if (!isEnabled) {
 						if (NvgtUtils.hasNvgtSupport(pm, packageName)) {
 							isEnabled = true
-							enabledApps.add(packageName)
+							newEnabledSet.add(packageName)
 							newNativeAppsFound = true
 						}
 					}
@@ -205,55 +172,31 @@ class SettingsActivity : AppCompatActivity() {
 			}
 			
 			if (newNativeAppsFound) {
-				saveEnabledApps()
+				withContext(Dispatchers.Main) {
+					enabledApps = newEnabledSet
+					saveEnabledApps()
+				}
 			}
 
 			tempAppList.sortBy { it.name }
 			
-			appsList.clear()
-			appsList.addAll(tempAppList)
+			withContext(Dispatchers.Main) {
+				appsList.clear()
+				appsList.addAll(tempAppList)
+			}
 		}
 	}
 
 	private fun saveEnabledApps() {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", MODE_PRIVATE)
-		prefs.edit().putStringSet("enabled_app_packages", enabledApps.toSet()).apply()
+		prefs.edit().putStringSet("enabled_app_packages", enabledApps).apply()
 	}
 
 	private fun loadEnabledApps() {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", MODE_PRIVATE)
 		val savedSet = prefs.getStringSet("enabled_app_packages", emptySet())
-		enabledApps.clear()
 		if (savedSet != null) {
-			enabledApps.addAll(savedSet)
-		}
-	}
-
-	override fun onCreateOptionsMenu(menu: Menu): Boolean {
-		menuInflater.inflate(R.menu.settings_menu, menu)
-		return true
-	}
-
-	override fun onOptionsItemSelected(item: MenuItem): Boolean {
-		return when (item.itemId) {
-			R.id.action_backup -> {
-				val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-					addCategory(Intent.CATEGORY_OPENABLE)
-					type = "application/json"
-					putExtra(Intent.EXTRA_TITLE, "nvgt_bridge_backup.json")
-				}
-				backupLauncher.launch(intent)
-				true
-			}
-			R.id.action_restore -> {
-				val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-					addCategory(Intent.CATEGORY_OPENABLE)
-					type = "application/json"
-				}
-				restoreLauncher.launch(intent)
-				true
-			}
-			else -> super.onOptionsItemSelected(item)
+			enabledApps = savedSet
 		}
 	}
 
@@ -269,7 +212,6 @@ class SettingsActivity : AppCompatActivity() {
 				
 				root.put("haptics_enabled", prefs.getBoolean("haptics_enabled", true))
 
-				// Backup direct typing settings
 				val directTypingObj = JSONObject()
 				prefs.all.keys.filter { it.startsWith("direct_typing_") }.forEach { key ->
 					directTypingObj.put(key, prefs.getBoolean(key, false))
@@ -316,12 +258,17 @@ class SettingsActivity : AppCompatActivity() {
 						newEnabledApps.add(appsArray.getString(i))
 					}
 					editor.putStringSet("enabled_app_packages", newEnabledApps)
-					enabledApps.clear()
-					enabledApps.addAll(newEnabledApps)
+					withContext(Dispatchers.Main) {
+						enabledApps = newEnabledApps
+					}
 				}
 
 				if (root.has("haptics_enabled")) {
-					editor.putBoolean("haptics_enabled", root.getBoolean("haptics_enabled"))
+					val enabled = root.getBoolean("haptics_enabled")
+					editor.putBoolean("haptics_enabled", enabled)
+					withContext(Dispatchers.Main) {
+						hapticsEnabled = enabled
+					}
 				}
 
 				if (root.has("direct_typing")) {
@@ -336,13 +283,7 @@ class SettingsActivity : AppCompatActivity() {
 				editor.apply()
 
 				withContext(Dispatchers.Main) {
-					// Refresh UI
-					val hapticSwitch: SwitchCompat = findViewById(R.id.master_haptic_switch)
-					hapticSwitch.isChecked = prefs.getBoolean("haptics_enabled", true)
-					
-					loadInstalledApps() // Reloads list and refreshes adapter
-					updateAppList(currentSearchQuery)
-					
+					loadInstalledApps()
 					Toast.makeText(this@SettingsActivity, R.string.restore_success, Toast.LENGTH_SHORT).show()
 				}
 			} catch (e: Exception) {
@@ -351,5 +292,211 @@ class SettingsActivity : AppCompatActivity() {
 				}
 			}
 		}
+	}
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+	hapticsEnabled: Boolean,
+	onHapticsChanged: (Boolean) -> Unit,
+	searchQuery: String,
+	onSearchQueryChanged: (String) -> Unit,
+	appsList: List<AppInfo>,
+	enabledApps: Set<String>,
+	onAppToggle: (AppInfo, Boolean) -> Unit,
+	onAppConfigure: (AppInfo) -> Unit,
+	onBackup: (Uri) -> Unit,
+	onRestore: (Uri) -> Unit
+) {
+	val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+		if (result.resultCode == Activity.RESULT_OK) {
+			result.data?.data?.let { uri -> onBackup(uri) }
+		}
+	}
+
+	val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+		if (result.resultCode == Activity.RESULT_OK) {
+			result.data?.data?.let { uri -> onRestore(uri) }
+		}
+	}
+
+	var showMenu by remember { mutableStateOf(false) }
+
+	Scaffold(
+		topBar = {
+			TopAppBar(
+				title = { Text("Direct Touch Apps", color = Color.White) },
+				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary),
+				actions = {
+					IconButton(onClick = { showMenu = !showMenu }) {
+						Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color.White)
+					}
+					DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+						DropdownMenuItem(
+							text = { Text("Backup Settings") },
+							onClick = {
+								showMenu = false
+								val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+									addCategory(Intent.CATEGORY_OPENABLE)
+									type = "application/json"
+									putExtra(Intent.EXTRA_TITLE, "nvgt_bridge_backup.json")
+								}
+								backupLauncher.launch(intent)
+							}
+						)
+						DropdownMenuItem(
+							text = { Text("Restore Settings") },
+							onClick = {
+								showMenu = false
+								val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+									addCategory(Intent.CATEGORY_OPENABLE)
+									type = "application/json"
+								}
+								restoreLauncher.launch(intent)
+							}
+						)
+					}
+				}
+			)
+		}
+	) { padding ->
+		Column(modifier = Modifier.padding(padding)) {
+			Row(
+				modifier = Modifier
+					.fillMaxWidth()
+					.clickable { onHapticsChanged(!hapticsEnabled) }
+					.padding(16.dp)
+					.clearAndSetSemantics {
+						contentDescription = "Enable Haptic Feedback, ${if (hapticsEnabled) "on" else "off"}"
+						role = Role.Switch
+					},
+				verticalAlignment = Alignment.CenterVertically
+			) {
+				Text("Enable Haptic Feedback", modifier = Modifier.weight(1f), fontSize = 18.sp)
+				Switch(checked = hapticsEnabled, onCheckedChange = null)
+			}
+
+			TextField(
+				value = searchQuery,
+				onValueChange = onSearchQueryChanged,
+				modifier = Modifier
+					.fillMaxWidth()
+					.padding(horizontal = 16.dp),
+				placeholder = { Text("Search Apps") },
+				leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+				singleLine = true
+			)
+
+			val filteredApps = if (searchQuery.isEmpty()) {
+				appsList
+			} else {
+				appsList.filter { it.name.contains(searchQuery, ignoreCase = true) }
+			}
+
+			val enabled = filteredApps.filter { it.isEnabled }.sortedBy { it.name }
+			val disabled = filteredApps.filter { !it.isEnabled }.sortedBy { it.name }
+
+			val items = mutableListOf<AppListItem>()
+			if (enabled.isNotEmpty()) {
+				items.add(AppListItem.Header("Direct Touch Enabled Apps"))
+				items.addAll(enabled.map { AppListItem.App(it) })
+			}
+			if (disabled.isNotEmpty()) {
+				items.add(AppListItem.Header("All Apps"))
+				items.addAll(disabled.map { AppListItem.App(it) })
+			}
+
+			val lazyListState = rememberLazyListState()
+
+			LazyColumn(
+				state = lazyListState,
+				modifier = Modifier
+					.fillMaxSize()
+					.semantics {
+						verticalScrollAxisRange = ScrollAxisRange(
+							value = { lazyListState.firstVisibleItemIndex.toFloat() },
+							maxValue = { (items.size - 1).coerceAtLeast(0).toFloat() }
+						)
+						collectionInfo = CollectionInfo(rowCount = items.size, columnCount = 1)
+					}
+			) {
+				items(items) { item ->
+					when (item) {
+						is AppListItem.Header -> HeaderRow(item.title)
+						is AppListItem.App -> AppRow(
+							appInfo = item.appInfo,
+							onToggle = { isEnabled -> onAppToggle(item.appInfo, isEnabled) },
+							onConfigure = { onAppConfigure(item.appInfo) }
+						)
+					}
+				}
+			}
+		}
+	}
+}
+
+@Composable
+fun HeaderRow(title: String) {
+	Text(
+		text = title,
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)
+			.semantics { heading() },
+		fontWeight = FontWeight.Bold,
+		color = MaterialTheme.colorScheme.primary,
+		fontSize = 14.sp
+	)
+}
+
+@Composable
+fun AppRow(
+	appInfo: AppInfo,
+	onToggle: (Boolean) -> Unit,
+	onConfigure: () -> Unit
+) {
+	val painter = rememberDrawablePainter(appInfo.icon)
+
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.clickable { onToggle(!appInfo.isEnabled) }
+			.padding(16.dp)
+			.clearAndSetSemantics {
+				val stateText = if (appInfo.isEnabled) "on" else "off"
+				contentDescription = "${appInfo.name}, $stateText"
+				role = Role.Switch
+				customActions = listOf(
+					CustomAccessibilityAction("Configure settings for ${appInfo.name}") {
+						onConfigure()
+						true
+					}
+				)
+			},
+		verticalAlignment = Alignment.CenterVertically
+	) {
+		Image(
+			painter = painter,
+			contentDescription = null,
+			modifier = Modifier.size(48.dp)
+		)
+		Spacer(modifier = Modifier.width(16.dp))
+		Text(
+			text = appInfo.name,
+			modifier = Modifier.weight(1f),
+			fontSize = 16.sp
+		)
+		Switch(
+			checked = appInfo.isEnabled,
+			onCheckedChange = null
+		)
+	}
+}
+
+@Composable
+fun rememberDrawablePainter(drawable: Drawable): Painter {
+	return remember(drawable) {
+		BitmapPainter(drawable.toBitmap().asImageBitmap())
 	}
 }
