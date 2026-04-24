@@ -16,7 +16,8 @@
 		<activity
 			android:name=".SettingsActivity"
 			android:exported="true"
-			android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+			android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+			tools:ignore="Instantiatable" />
 
 		<service
 			android:name=".NvgtBridgeService"
