@@ -17,6 +17,7 @@ import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -41,6 +42,7 @@ class NvgtBridgeService : AccessibilityService() {
 	private var currentNvgtPackage: String? = null
 	private lateinit var prefs: SharedPreferences
 	private var accessibilityManager: AccessibilityManager? = null
+	private var receiverRegistered = false
 	private val targetCache = mutableMapOf<String, Boolean>()
 	private val directTypingCache = mutableMapOf<String, Boolean>()
 	
@@ -113,6 +115,7 @@ class NvgtBridgeService : AccessibilityService() {
 
 		val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
 		registerReceiver(screenReceiver, filter)
+		receiverRegistered = true
 		
 		val info = serviceInfo
 		info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
@@ -126,9 +129,13 @@ class NvgtBridgeService : AccessibilityService() {
 
 	override fun onDestroy() {
 		super.onDestroy()
-		unregisterReceiver(screenReceiver)
-		prefs.unregisterOnSharedPreferenceChangeListener(preferenceChangeListener)
-		
+		if (receiverRegistered) {
+			unregisterReceiver(screenReceiver)
+			receiverRegistered = false
+		}
+		if (this::prefs.isInitialized) {
+			prefs.unregisterOnSharedPreferenceChangeListener(preferenceChangeListener)
+		}
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			(serviceStateListener as? AccessibilityManager.AccessibilityServicesStateChangeListener)?.let {
 				accessibilityManager?.removeAccessibilityServicesStateChangeListener(it)
@@ -147,8 +154,7 @@ class NvgtBridgeService : AccessibilityService() {
 	override fun onAccessibilityEvent(event: AccessibilityEvent) {
 		when (event.eventType) {
 			AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-			AccessibilityEvent.TYPE_WINDOWS_CHANGED,
-			AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+			AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
 				debounceUpdate()
 			}
 		}
@@ -174,8 +180,7 @@ class NvgtBridgeService : AccessibilityService() {
 		val rootWindow = allWindows.find { it.isFocused } ?: allWindows.firstOrNull()
 		val currentAppPackage = rootWindow?.root?.packageName?.toString() ?: return
 
-		val displayMetrics = resources.displayMetrics
-		val screenHeight = displayMetrics.heightPixels
+		val displayBounds = currentDisplayBounds()
 
 		val isSystemUIInFront = allWindows.any { window ->
 			if (window.isActive && 
@@ -184,7 +189,7 @@ class NvgtBridgeService : AccessibilityService() {
 				
 				val bounds = Rect()
 				window.getBoundsInScreen(bounds)
-				return@any bounds.height() > (screenHeight / 2)
+				return@any bounds.height() > (displayBounds.height() / 2)
 			}
 			false
 		}
@@ -197,18 +202,24 @@ class NvgtBridgeService : AccessibilityService() {
 		if (shouldEnableBridgeForPackage(currentAppPackage)) {
 			currentNvgtPackage = currentAppPackage
 			
-			if (checkForNativeUI()) {
+			if (checkForNativeUI(allWindows)) {
 				disableDirectTouch(keepPackage = true)
 			} else {
-				enableDirectTouch()
+				enableDirectTouch(allWindows, displayBounds)
 			}
 		} else {
 			disableDirectTouch()
 		}
 	}
 
-	private fun checkForNativeUI(): Boolean {
-		return windows.any { window ->
+	private fun currentDisplayBounds(): Rect {
+		val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+		return Rect(windowManager.currentWindowMetrics.bounds)
+	}
+
+	private fun checkForNativeUI(allWindows: List<AccessibilityWindowInfo>): Boolean {
+		val gamePackage = currentNvgtPackage
+		return allWindows.any { window ->
 			if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION && 
 				window.type != AccessibilityWindowInfo.TYPE_SYSTEM) {
 				return@any false
@@ -220,7 +231,9 @@ class NvgtBridgeService : AccessibilityService() {
 			if (IGNORED_SYSTEM_PACKAGES.contains(pkg)) {
 				return@any false
 			}
-			
+			if (window.type == AccessibilityWindowInfo.TYPE_APPLICATION && pkg != gamePackage) {
+				return@any true
+			}
 			scanNodeForDialogs(root, 0)
 		}
 	}
@@ -236,10 +249,6 @@ class NvgtBridgeService : AccessibilityService() {
 		}
 
 		if (className.contains("EditText", ignoreCase = true)) {
-			return true
-		}
-
-		if (node.isClickable && className.endsWith("Button")) {
 			return true
 		}
 		
@@ -310,8 +319,8 @@ class NvgtBridgeService : AccessibilityService() {
 		}
 	}
 
-	private fun enableDirectTouch() {
-		updatePassthroughRegion()
+	private fun enableDirectTouch(allWindows: List<AccessibilityWindowInfo>, displayBounds: Rect) {
+		updatePassthroughRegion(allWindows, displayBounds)
 		playHapticFeedback(true)
 	}
 
@@ -323,16 +332,14 @@ class NvgtBridgeService : AccessibilityService() {
 		playHapticFeedback(false)
 	}
 
-	private fun updatePassthroughRegion() {
+	private fun updatePassthroughRegion(allWindows: List<AccessibilityWindowInfo>, displayBounds: Rect) {
 		val currentPkg = currentNvgtPackage ?: return
-
-		val metrics = resources.displayMetrics
-		val finalRegion = Region(0, 0, metrics.widthPixels, metrics.heightPixels)
+		val finalRegion = Region(displayBounds)
 		val windowBounds = Rect()
 
 		val directTyping = isDirectTypingEnabled(currentPkg)
 
-		windows.forEach { window ->
+		allWindows.forEach { window ->
 			val shouldSubtract = if (directTyping) {
 				window.type == AccessibilityWindowInfo.TYPE_SYSTEM ||
 				window.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY
