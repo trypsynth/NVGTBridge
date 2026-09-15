@@ -33,8 +33,6 @@ class NvgtBridgeService : AccessibilityService() {
 		
 		private val IGNORED_SYSTEM_PACKAGES = setOf(
 			"com.android.systemui",
-			"com.android.inputmethod",
-			"com.google.android.inputmethod",
 			"android",
 			"com.google.android.gms"
 		)
@@ -67,14 +65,16 @@ class NvgtBridgeService : AccessibilityService() {
 	private var serviceStateListener: Any? = null
 
 	private val preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-		if (key == KEY_ENABLED_APPS) {
-			targetCache.clear()
-		}
-		if (key != null && key.startsWith("direct_typing_")) {
-			directTypingCache.clear()
-		}
-		if (key == KEY_MASTER_SWITCH) {
-			performUpdate()
+		handler.post {
+			if (key == KEY_ENABLED_APPS) {
+				targetCache.clear()
+			}
+			if (key != null && key.startsWith("direct_typing_")) {
+				directTypingCache.clear()
+			}
+			if (key == KEY_MASTER_SWITCH) {
+				performUpdate()
+			}
 		}
 	}
 
@@ -139,7 +139,7 @@ class NvgtBridgeService : AccessibilityService() {
 			}
 		}
 
-		handler.removeCallbacks(updateRunnable)
+		handler.removeCallbacksAndMessages(null)
 		targetCache.clear()
 		directTypingCache.clear()
 	}
@@ -348,11 +348,9 @@ class NvgtBridgeService : AccessibilityService() {
 			}
 		}
 
-		if (!finalRegion.isEmpty) {
-			try {
-				setTouchExplorationPassthroughRegion(0, finalRegion)
-			} catch (_: Exception) {}
-		}
+		try {
+			setTouchExplorationPassthroughRegion(0, finalRegion)
+		} catch (_: Exception) {}
 	}
 
 	private fun isOtherTouchExplorationEnabled(): Boolean {

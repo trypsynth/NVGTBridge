@@ -194,10 +194,7 @@ class SettingsActivity : ComponentActivity() {
 
 	private fun loadEnabledApps() {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", MODE_PRIVATE)
-		val savedSet = prefs.getStringSet("enabled_app_packages", emptySet())
-		if (savedSet != null) {
-			enabledApps = savedSet
-		}
+		enabledApps = prefs.getStringSet("enabled_app_packages", emptySet())?.toSet() ?: emptySet()
 	}
 
 	private fun performBackup(uri: Uri) {
