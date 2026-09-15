@@ -14,11 +14,11 @@ if (localPropertiesFile.exists()) {
 }
 
 android {
-	namespace = "com.nvgt.bridge"
+	namespace = "dev.nvgt.bridge"
 	compileSdk = 36
 
 	defaultConfig {
-		applicationId = "com.nvgt.bridge"
+		applicationId = "dev.nvgt.bridge"
 		minSdk = 30
 		targetSdk = 36
 		versionCode = 3

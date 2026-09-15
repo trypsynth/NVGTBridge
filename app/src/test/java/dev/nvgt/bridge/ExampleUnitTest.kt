@@ -1,4 +1,4 @@
-package com.nvgt.bridge
+package dev.nvgt.bridge
 
 import org.junit.Test
 

@@ -1,4 +1,4 @@
-package com.nvgt.bridge
+package dev.nvgt.bridge
 
 import android.app.Activity
 import android.content.Context
