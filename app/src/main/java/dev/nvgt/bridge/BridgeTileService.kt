@@ -3,7 +3,6 @@ package dev.nvgt.bridge
 import android.content.Context
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import android.util.Log
 
 class BridgeTileService : TileService() {
 	

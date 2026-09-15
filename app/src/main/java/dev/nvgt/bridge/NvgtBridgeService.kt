@@ -190,7 +190,7 @@ class NvgtBridgeService : AccessibilityService() {
 		}
 
 		if (isSystemUIInFront || IGNORED_SYSTEM_PACKAGES.contains(currentAppPackage)) {
-			disableDirectTouch(keepPackage = (currentNvgtPackage != null))
+			disableDirectTouch(keepPackage = true)
 			return
 		}
 
@@ -285,13 +285,7 @@ class NvgtBridgeService : AccessibilityService() {
 
 		try {
 			val effect = if (isEnabled) {
-				val supportsPrimitives = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-					vib.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)
-				} else {
-					false
-				}
-
-				if (supportsPrimitives && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+				if (vib.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
 					VibrationEffect.startComposition()
 						.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK)
 						.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 1.0f, 100)
@@ -306,12 +300,9 @@ class NvgtBridgeService : AccessibilityService() {
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 				val attributes = VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ACCESSIBILITY)
 				vib.vibrate(effect, attributes)
-			} else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-				@Suppress("DEPRECATION")
-				vib.vibrate(effect, hapticAttributes)
 			} else {
 				@Suppress("DEPRECATION")
-				vib.vibrate(100)
+				vib.vibrate(effect, hapticAttributes)
 			}
 		} catch (_: Exception) {
 			@Suppress("DEPRECATION")
@@ -326,18 +317,14 @@ class NvgtBridgeService : AccessibilityService() {
 
 	private fun disableDirectTouch(keepPackage: Boolean = false) {
 		if (!keepPackage) currentNvgtPackage = null
-		
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-			try {
-				setTouchExplorationPassthroughRegion(0, Region())
-			} catch (_: Exception) {}
-		}
+		try {
+			setTouchExplorationPassthroughRegion(0, Region())
+		} catch (_: Exception) {}
 		playHapticFeedback(false)
 	}
 
 	private fun updatePassthroughRegion() {
 		val currentPkg = currentNvgtPackage ?: return
-		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
 
 		val metrics = resources.displayMetrics
 		val finalRegion = Region(0, 0, metrics.widthPixels, metrics.heightPixels)
