@@ -53,15 +53,12 @@ class SettingsActivity : ComponentActivity() {
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
-
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 		hapticsEnabled = prefs.getBoolean("haptics_enabled", true)
 		loadEnabledApps()
-
 		lifecycleScope.launch {
 			loadInstalledApps()
 		}
-
 		setContent {
 			MaterialTheme(
 				colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
@@ -117,20 +114,16 @@ class SettingsActivity : ComponentActivity() {
 			val pm = packageManager
 			val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
 			val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
-
 			val tempAppList = mutableListOf<AppInfo>()
 			val newEnabledSet = enabledApps.toMutableSet()
 			val seenNativeApps = prefs.getStringSet("seen_native_packages", emptySet())?.toMutableSet() ?: mutableSetOf()
 			var seenChanged = false
 			var enabledChanged = false
-
 			for (packageInfo in packages) {
 				if (pm.getLaunchIntentForPackage(packageInfo.packageName) != null) {
 					val appName = packageInfo.loadLabel(pm).toString()
 					val packageName = packageInfo.packageName
-
 					var isEnabled = newEnabledSet.contains(packageName)
-
 					if (!seenNativeApps.contains(packageName) && NvgtUtils.hasNvgtSupport(pm, packageName)) {
 						seenNativeApps.add(packageName)
 						seenChanged = true
@@ -140,26 +133,20 @@ class SettingsActivity : ComponentActivity() {
 							enabledChanged = true
 						}
 					}
-
 					val directTyping = prefs.getBoolean("direct_typing_$packageName", false)
-
 					tempAppList.add(AppInfo(appName, packageName, isEnabled, directTyping))
 				}
 			}
-
 			if (seenChanged) {
 				prefs.edit().putStringSet("seen_native_packages", seenNativeApps).apply()
 			}
-
 			if (enabledChanged) {
 				withContext(Dispatchers.Main) {
 					enabledApps = newEnabledSet
 					saveEnabledApps()
 				}
 			}
-
 			tempAppList.sortBy { it.name }
-
 			withContext(Dispatchers.Main) {
 				appsList.clear()
 				appsList.addAll(tempAppList)
@@ -182,27 +169,21 @@ class SettingsActivity : ComponentActivity() {
 			try {
 				val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 				val root = JSONObject()
-
 				val appsArray = JSONArray()
 				enabledApps.forEach { appsArray.put(it) }
 				root.put("enabled_apps", appsArray)
-
 				val seenArray = JSONArray()
 				prefs.getStringSet("seen_native_packages", emptySet())?.forEach { seenArray.put(it) }
 				root.put("seen_native_apps", seenArray)
-
 				root.put("haptics_enabled", prefs.getBoolean("haptics_enabled", true))
-
 				val directTypingObj = JSONObject()
 				prefs.all.keys.filter { it.startsWith("direct_typing_") }.forEach { key ->
 					directTypingObj.put(key, prefs.getBoolean(key, false))
 				}
 				root.put("direct_typing", directTypingObj)
-
 				contentResolver.openOutputStream(uri)?.use { outputStream ->
 					outputStream.write(root.toString(4).toByteArray())
 				}
-
 				withContext(Dispatchers.Main) {
 					Toast.makeText(this@SettingsActivity, R.string.backup_success, Toast.LENGTH_SHORT).show()
 				}
@@ -227,11 +208,9 @@ class SettingsActivity : ComponentActivity() {
 						}
 					}
 				}
-
 				val root = JSONObject(stringBuilder.toString())
 				val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 				val editor = prefs.edit()
-
 				if (root.has("enabled_apps")) {
 					val appsArray = root.getJSONArray("enabled_apps")
 					val newEnabledApps = mutableSetOf<String>()
@@ -243,7 +222,6 @@ class SettingsActivity : ComponentActivity() {
 						enabledApps = newEnabledApps
 					}
 				}
-
 				if (root.has("seen_native_apps")) {
 					val seenArray = root.getJSONArray("seen_native_apps")
 					val restoredSeen = mutableSetOf<String>()
@@ -252,7 +230,6 @@ class SettingsActivity : ComponentActivity() {
 					}
 					editor.putStringSet("seen_native_packages", restoredSeen)
 				}
-
 				if (root.has("haptics_enabled")) {
 					val enabled = root.getBoolean("haptics_enabled")
 					editor.putBoolean("haptics_enabled", enabled)
@@ -260,7 +237,6 @@ class SettingsActivity : ComponentActivity() {
 						hapticsEnabled = enabled
 					}
 				}
-
 				if (root.has("direct_typing")) {
 					val directTypingObj = root.getJSONObject("direct_typing")
 					val keys = directTypingObj.keys()
@@ -269,9 +245,7 @@ class SettingsActivity : ComponentActivity() {
 						editor.putBoolean(key, directTypingObj.getBoolean(key))
 					}
 				}
-
 				editor.apply()
-
 				withContext(Dispatchers.Main) {
 					loadInstalledApps()
 					Toast.makeText(this@SettingsActivity, R.string.restore_success, Toast.LENGTH_SHORT).show()
@@ -303,17 +277,14 @@ fun SettingsScreen(
 			result.data?.data?.let { uri -> onBackup(uri) }
 		}
 	}
-
 	val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
 		if (result.resultCode == Activity.RESULT_OK) {
 			result.data?.data?.let { uri -> onRestore(uri) }
 		}
 	}
-
 	var showMenu by remember { mutableStateOf(false) }
 	var configPackage by rememberSaveable { mutableStateOf<String?>(null) }
 	val backupFileName = stringResource(R.string.backup_file_name)
-
 	Scaffold(
 		topBar = {
 			TopAppBar(
@@ -360,7 +331,6 @@ fun SettingsScreen(
 			val hapticsLabel = stringResource(R.string.label_haptics)
 			val hapticsState = stringResource(if (hapticsEnabled) R.string.switch_on else R.string.switch_off)
 			val hapticsDescription = stringResource(R.string.a11y_switch, hapticsLabel, hapticsState)
-
 			Row(
 				modifier = Modifier
 					.fillMaxWidth()
@@ -375,7 +345,6 @@ fun SettingsScreen(
 				Text(hapticsLabel, modifier = Modifier.weight(1f), fontSize = 18.sp)
 				Switch(checked = hapticsEnabled, onCheckedChange = null)
 			}
-
 			TextField(
 				value = searchQuery,
 				onValueChange = onSearchQueryChanged,
@@ -386,16 +355,13 @@ fun SettingsScreen(
 				leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
 				singleLine = true
 			)
-
 			val listItems = buildAppListItems(
 				apps = appsList,
 				query = searchQuery,
 				enabledHeader = stringResource(R.string.header_enabled_apps),
 				allHeader = stringResource(R.string.header_all_apps)
 			)
-
 			val lazyListState = rememberLazyListState()
-
 			LazyColumn(
 				state = lazyListState,
 				modifier = Modifier
@@ -429,7 +395,6 @@ fun SettingsScreen(
 			}
 		}
 	}
-
 	val configTarget = configPackage?.let { pkg -> appsList.firstOrNull { it.packageName == pkg } }
 	if (configTarget != null) {
 		AppConfigDialog(
@@ -453,7 +418,6 @@ fun AppConfigDialog(
 	val label = stringResource(R.string.label_direct_typing)
 	val state = stringResource(if (directTyping) R.string.switch_on else R.string.switch_off)
 	val description = stringResource(R.string.a11y_switch, label, state)
-
 	AlertDialog(
 		onDismissRequest = onDismiss,
 		title = { Text(stringResource(R.string.config_title, appInfo.name)) },
@@ -509,7 +473,6 @@ fun AppRow(
 	val state = stringResource(if (appInfo.isEnabled) R.string.switch_on else R.string.switch_off)
 	val description = stringResource(R.string.a11y_switch, appInfo.name, state)
 	val configureLabel = stringResource(R.string.config_title, appInfo.name)
-
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()

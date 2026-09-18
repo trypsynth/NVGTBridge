@@ -32,7 +32,7 @@ class NvgtBridgeService : AccessibilityService() {
 		private const val KEY_MASTER_SWITCH = "master_switch"
 		private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
 		private const val DEBOUNCE_DELAY = 150L
-		
+
 		private val IGNORED_SYSTEM_PACKAGES = setOf(
 			"com.android.systemui",
 			"android",
@@ -46,14 +46,14 @@ class NvgtBridgeService : AccessibilityService() {
 	private var receiverRegistered = false
 	private val targetCache = mutableMapOf<String, Boolean>()
 	private val directTypingCache = mutableMapOf<String, Boolean>()
-	
+
 	private var vibrator: Vibrator? = null
 	private var lastPassthroughState = false
 	private val hapticAttributes = AudioAttributes.Builder()
 		.setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
 		.setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
 		.build()
-	
+
 	private val handler = Handler(Looper.getMainLooper())
 	private val updateRunnable = Runnable { performUpdate() }
 
@@ -85,9 +85,7 @@ class NvgtBridgeService : AccessibilityService() {
 		super.onServiceConnected()
 		prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 		prefs.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
-		
 		accessibilityManager = getSystemService(ACCESSIBILITY_SERVICE) as? AccessibilityManager
-		
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			val listener = AccessibilityManager.AccessibilityServicesStateChangeListener {
 				if (!isOtherTouchExplorationEnabled()) {
@@ -105,7 +103,6 @@ class NvgtBridgeService : AccessibilityService() {
 			serviceStateListener = listener
 			accessibilityManager?.addTouchExplorationStateChangeListener(listener)
 		}
-		
 		vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 			val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
 			vibratorManager?.defaultVibrator
@@ -113,11 +110,9 @@ class NvgtBridgeService : AccessibilityService() {
 			@Suppress("DEPRECATION")
 			getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
 		}
-
 		val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
 		registerReceiver(screenReceiver, filter)
 		receiverRegistered = true
-		
 		val info = serviceInfo
 		info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
 		serviceInfo = info
@@ -146,7 +141,6 @@ class NvgtBridgeService : AccessibilityService() {
 				accessibilityManager?.removeTouchExplorationStateChangeListener(it)
 			}
 		}
-
 		handler.removeCallbacksAndMessages(null)
 		targetCache.clear()
 		directTypingCache.clear()
@@ -176,33 +170,26 @@ class NvgtBridgeService : AccessibilityService() {
 			}
 			return
 		}
-
 		val allWindows = windows
 		val rootWindow = allWindows.find { it.isFocused } ?: allWindows.firstOrNull()
 		val currentAppPackage = rootWindow?.root?.packageName?.toString() ?: return
-
 		val displayBounds = currentDisplayBounds()
-
 		val isSystemUIInFront = allWindows.any { window ->
-			if (window.isActive && 
-				window.type == AccessibilityWindowInfo.TYPE_SYSTEM && 
+			if (window.isActive &&
+				window.type == AccessibilityWindowInfo.TYPE_SYSTEM &&
 				window.root?.packageName?.toString() == "com.android.systemui") {
-				
 				val bounds = Rect()
 				window.getBoundsInScreen(bounds)
 				return@any bounds.height() > (displayBounds.height() / 2)
 			}
 			false
 		}
-
 		if (isSystemUIInFront || IGNORED_SYSTEM_PACKAGES.contains(currentAppPackage)) {
 			disableDirectTouch(keepPackage = true)
 			return
 		}
-
 		if (shouldEnableBridgeForPackage(currentAppPackage)) {
 			currentNvgtPackage = currentAppPackage
-			
 			if (checkForNativeUI(allWindows)) {
 				disableDirectTouch(keepPackage = true)
 			} else {
@@ -221,14 +208,12 @@ class NvgtBridgeService : AccessibilityService() {
 	private fun checkForNativeUI(allWindows: List<AccessibilityWindowInfo>): Boolean {
 		val gamePackage = currentNvgtPackage
 		return allWindows.any { window ->
-			if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION && 
+			if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION &&
 				window.type != AccessibilityWindowInfo.TYPE_SYSTEM) {
 				return@any false
 			}
-
 			val root = window.root ?: return@any false
 			val pkg = root.packageName?.toString()
-
 			if (IGNORED_SYSTEM_PACKAGES.contains(pkg)) {
 				return@any false
 			}
@@ -241,18 +226,14 @@ class NvgtBridgeService : AccessibilityService() {
 
 	private fun scanNodeForDialogs(node: AccessibilityNodeInfo, depth: Int): Boolean {
 		if (depth > 5) return false
-
 		val className = node.className?.toString() ?: ""
-		
 		if (className.contains("AlertDialog", ignoreCase = true) ||
 			className.contains("android.app.Dialog", ignoreCase = true)) {
 			return true
 		}
-
 		if (className.contains("EditText", ignoreCase = true)) {
 			return true
 		}
-		
 		for (i in 0 until node.childCount) {
 			val child = node.getChild(i) ?: continue
 			if (scanNodeForDialogs(child, depth + 1)) {
@@ -264,7 +245,6 @@ class NvgtBridgeService : AccessibilityService() {
 
 	private fun shouldEnableBridgeForPackage(packageName: String): Boolean {
 		targetCache[packageName]?.let { return it }
-
 		val enabledPackages = prefs.getStringSet(KEY_ENABLED_APPS, emptySet()) ?: emptySet()
 		if (enabledPackages.contains(packageName)) {
 			targetCache[packageName] = true
@@ -289,7 +269,6 @@ class NvgtBridgeService : AccessibilityService() {
 
 	private fun isDirectTypingEnabled(packageName: String): Boolean {
 		directTypingCache[packageName]?.let { return it }
-		
 		val isEnabled = prefs.getBoolean("direct_typing_$packageName", false)
 		directTypingCache[packageName] = isEnabled
 		return isEnabled
@@ -300,10 +279,8 @@ class NvgtBridgeService : AccessibilityService() {
 		if (!hapticsOn) return
 		if (lastPassthroughState == isEnabled) return
 		lastPassthroughState = isEnabled
-
 		val vib = vibrator ?: return
 		if (!vib.hasVibrator()) return
-
 		try {
 			val effect = if (isEnabled) {
 				if (vib.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
@@ -317,7 +294,6 @@ class NvgtBridgeService : AccessibilityService() {
 			} else {
 				VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
 			}
-
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 				val attributes = VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ACCESSIBILITY)
 				vib.vibrate(effect, attributes)
@@ -347,7 +323,6 @@ class NvgtBridgeService : AccessibilityService() {
 	private fun updatePassthroughRegion(allWindows: List<AccessibilityWindowInfo>, displayBounds: Rect) {
 		val currentPkg = currentNvgtPackage ?: return
 		val windowBounds = Rect()
-
 		val directTyping = isDirectTypingEnabled(currentPkg)
 		val excluded = mutableListOf<Rect>()
 		allWindows.forEach { window ->
@@ -365,9 +340,9 @@ class NvgtBridgeService : AccessibilityService() {
 		val am = accessibilityManager ?: return false
 		val services = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
 		val myPackageName = this.packageName
-		return services.any { 
-			it.resolveInfo.serviceInfo.packageName != myPackageName && 
-			(it.flags and AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE) != 0 
+		return services.any {
+			it.resolveInfo.serviceInfo.packageName != myPackageName &&
+			(it.flags and AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE) != 0
 		}
 	}
 }
