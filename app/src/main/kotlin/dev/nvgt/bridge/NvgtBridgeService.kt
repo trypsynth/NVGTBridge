@@ -346,29 +346,18 @@ class NvgtBridgeService : AccessibilityService() {
 
 	private fun updatePassthroughRegion(allWindows: List<AccessibilityWindowInfo>, displayBounds: Rect) {
 		val currentPkg = currentNvgtPackage ?: return
-		val finalRegion = Region(displayBounds)
 		val windowBounds = Rect()
 
 		val directTyping = isDirectTypingEnabled(currentPkg)
-
+		val excluded = mutableListOf<Rect>()
 		allWindows.forEach { window ->
-			val shouldSubtract = if (directTyping) {
-				window.type == AccessibilityWindowInfo.TYPE_SYSTEM ||
-				window.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY
-			} else {
-				window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD || 
-				window.type == AccessibilityWindowInfo.TYPE_SYSTEM ||
-				window.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY
-			}
-			
-			if (shouldSubtract) {
+			if (shouldExcludeWindow(window.type, directTyping)) {
 				window.getBoundsInScreen(windowBounds)
-				finalRegion.op(windowBounds, Region.Op.DIFFERENCE)
+				excluded.add(Rect(windowBounds))
 			}
 		}
-
 		try {
-			setTouchExplorationPassthroughRegion(0, finalRegion)
+			setTouchExplorationPassthroughRegion(0, passthroughRegion(displayBounds, excluded))
 		} catch (_: Exception) {}
 	}
 
@@ -381,4 +370,18 @@ class NvgtBridgeService : AccessibilityService() {
 			(it.flags and AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE) != 0 
 		}
 	}
+}
+
+fun shouldExcludeWindow(windowType: Int, directTyping: Boolean): Boolean {
+	if (windowType == AccessibilityWindowInfo.TYPE_SYSTEM ||
+		windowType == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) {
+		return true
+	}
+	return !directTyping && windowType == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+}
+
+fun passthroughRegion(displayBounds: Rect, excluded: List<Rect>): Region {
+	val region = Region(displayBounds)
+	excluded.forEach { region.op(it, Region.Op.DIFFERENCE) }
+	return region
 }

@@ -44,11 +44,6 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-sealed class AppListItem {
-	data class Header(val title: String) : AppListItem()
-	data class App(val appInfo: AppInfo) : AppListItem()
-}
-
 class SettingsActivity : ComponentActivity() {
 
 	private val appsList = mutableStateListOf<AppInfo>()
@@ -392,24 +387,12 @@ fun SettingsScreen(
 				singleLine = true
 			)
 
-			val filteredApps = if (searchQuery.isEmpty()) {
-				appsList
-			} else {
-				appsList.filter { it.name.contains(searchQuery, ignoreCase = true) }
-			}
-
-			val enabled = filteredApps.filter { it.isEnabled }.sortedBy { it.name }
-			val disabled = filteredApps.filter { !it.isEnabled }.sortedBy { it.name }
-
-			val listItems = mutableListOf<AppListItem>()
-			if (enabled.isNotEmpty()) {
-				listItems.add(AppListItem.Header(stringResource(R.string.header_enabled_apps)))
-				listItems.addAll(enabled.map { AppListItem.App(it) })
-			}
-			if (disabled.isNotEmpty()) {
-				listItems.add(AppListItem.Header(stringResource(R.string.header_all_apps)))
-				listItems.addAll(disabled.map { AppListItem.App(it) })
-			}
+			val listItems = buildAppListItems(
+				apps = appsList,
+				query = searchQuery,
+				enabledHeader = stringResource(R.string.header_enabled_apps),
+				allHeader = stringResource(R.string.header_all_apps)
+			)
 
 			val lazyListState = rememberLazyListState()
 
