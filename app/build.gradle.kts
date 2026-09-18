@@ -13,6 +13,10 @@ if (localPropertiesFile.exists()) {
 	localProperties.load(FileInputStream(localPropertiesFile))
 }
 
+val releaseKeystore = rootProject.file("keys/release.jks")
+val releaseKeystorePassword: String? = localProperties.getProperty("store.password")
+val canSignRelease = releaseKeystore.exists() && releaseKeystorePassword != null
+
 android {
 	namespace = "dev.nvgt.bridge"
 	compileSdk = 36
@@ -28,11 +32,13 @@ android {
 	}
 
 	signingConfigs {
-		create("release") {
-			storeFile = rootProject.file("keys/release.jks")
-			storePassword = localProperties.getProperty("store.password")
-			keyAlias = "nvgt"
-			keyPassword = localProperties.getProperty("store.password")
+		if (canSignRelease) {
+			create("release") {
+				storeFile = releaseKeystore
+				storePassword = releaseKeystorePassword
+				keyAlias = "nvgt"
+				keyPassword = releaseKeystorePassword
+			}
 		}
 	}
 
@@ -40,7 +46,9 @@ android {
 		release {
 			isMinifyEnabled = true
 			isShrinkResources = true
-			signingConfig = signingConfigs.getByName("release")
+			if (canSignRelease) {
+				signingConfig = signingConfigs.getByName("release")
+			}
 			proguardFiles(
 				getDefaultProguardFile("proguard-android-optimize.txt"),
 				"proguard-rules.pro"
