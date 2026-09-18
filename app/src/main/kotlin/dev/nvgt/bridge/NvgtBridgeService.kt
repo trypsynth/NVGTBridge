@@ -275,7 +275,7 @@ class NvgtBridgeService : AccessibilityService() {
 	}
 
 	private fun playHapticFeedback(isEnabled: Boolean) {
-		val hapticsOn = prefs.getBoolean(KEY_HAPTICS_ENABLED, true)
+		val hapticsOn = prefs.getBoolean(KEY_HAPTICS_ENABLED, false)
 		if (!hapticsOn) return
 		if (lastPassthroughState == isEnabled) return
 		lastPassthroughState = isEnabled

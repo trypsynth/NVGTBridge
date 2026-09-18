@@ -48,13 +48,13 @@ class SettingsActivity : ComponentActivity() {
 
 	private val appsList = mutableStateListOf<AppInfo>()
 	private var enabledApps by mutableStateOf(setOf<String>())
-	private var hapticsEnabled by mutableStateOf(true)
+	private var hapticsEnabled by mutableStateOf(false)
 	private var searchQuery by mutableStateOf("")
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
-		hapticsEnabled = prefs.getBoolean("haptics_enabled", true)
+		hapticsEnabled = prefs.getBoolean("haptics_enabled", false)
 		loadEnabledApps()
 		lifecycleScope.launch {
 			loadInstalledApps()
@@ -112,6 +112,7 @@ class SettingsActivity : ComponentActivity() {
 	private suspend fun loadInstalledApps() {
 		withContext(Dispatchers.IO) {
 			val pm = packageManager
+			val selfPackage = packageName
 			val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
 			val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 			val tempAppList = mutableListOf<AppInfo>()
@@ -120,7 +121,7 @@ class SettingsActivity : ComponentActivity() {
 			var seenChanged = false
 			var enabledChanged = false
 			for (packageInfo in packages) {
-				if (pm.getLaunchIntentForPackage(packageInfo.packageName) != null) {
+				if (packageInfo.packageName != selfPackage && pm.getLaunchIntentForPackage(packageInfo.packageName) != null) {
 					val appName = packageInfo.loadLabel(pm).toString()
 					val packageName = packageInfo.packageName
 					var isEnabled = newEnabledSet.contains(packageName)
@@ -175,7 +176,7 @@ class SettingsActivity : ComponentActivity() {
 				val seenArray = JSONArray()
 				prefs.getStringSet("seen_native_packages", emptySet())?.forEach { seenArray.put(it) }
 				root.put("seen_native_apps", seenArray)
-				root.put("haptics_enabled", prefs.getBoolean("haptics_enabled", true))
+				root.put("haptics_enabled", prefs.getBoolean("haptics_enabled", false))
 				val directTypingObj = JSONObject()
 				prefs.all.keys.filter { it.startsWith("direct_typing_") }.forEach { key ->
 					directTypingObj.put(key, prefs.getBoolean(key, false))
