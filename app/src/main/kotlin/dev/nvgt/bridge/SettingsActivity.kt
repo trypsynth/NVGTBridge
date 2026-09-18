@@ -1,17 +1,21 @@
 package dev.nvgt.bridge
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -50,6 +54,7 @@ class SettingsActivity : ComponentActivity() {
 	private var enabledApps by mutableStateOf(setOf<String>())
 	private var hapticsEnabled by mutableStateOf(false)
 	private var searchQuery by mutableStateOf("")
+	private var serviceEnabled by mutableStateOf(false)
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -64,6 +69,8 @@ class SettingsActivity : ComponentActivity() {
 				colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
 			) {
 				SettingsScreen(
+					serviceEnabled = serviceEnabled,
+					onEnableService = { openAccessibilitySettings() },
 					hapticsEnabled = hapticsEnabled,
 					onHapticsChanged = { enabled ->
 						hapticsEnabled = enabled
@@ -83,6 +90,22 @@ class SettingsActivity : ComponentActivity() {
 				)
 			}
 		}
+	}
+
+	override fun onResume() {
+		super.onResume()
+		serviceEnabled = isBridgeServiceEnabled()
+	}
+
+	private fun isBridgeServiceEnabled(): Boolean {
+		val manager = getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
+		return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
+			it.resolveInfo.serviceInfo.packageName == packageName
+		}
+	}
+
+	private fun openAccessibilitySettings() {
+		startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
 	}
 
 	private fun toggleApp(app: AppInfo, isEnabled: Boolean) {
@@ -263,6 +286,8 @@ class SettingsActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+	serviceEnabled: Boolean,
+	onEnableService: () -> Unit,
 	hapticsEnabled: Boolean,
 	onHapticsChanged: (Boolean) -> Unit,
 	searchQuery: String,
@@ -289,7 +314,7 @@ fun SettingsScreen(
 	Scaffold(
 		topBar = {
 			TopAppBar(
-				title = { Text(stringResource(R.string.title_direct_touch_apps)) },
+				title = { Text(stringResource(R.string.app_name)) },
 				colors = TopAppBarDefaults.topAppBarColors(
 					containerColor = MaterialTheme.colorScheme.primary,
 					titleContentColor = MaterialTheme.colorScheme.onPrimary,
@@ -329,6 +354,9 @@ fun SettingsScreen(
 		}
 	) { padding ->
 		Column(modifier = Modifier.padding(padding)) {
+			if (!serviceEnabled) {
+				ServiceDisabledBanner(onClick = onEnableService)
+			}
 			val hapticsLabel = stringResource(R.string.label_haptics)
 			val hapticsState = stringResource(if (hapticsEnabled) R.string.switch_on else R.string.switch_off)
 			val hapticsDescription = stringResource(R.string.a11y_switch, hapticsLabel, hapticsState)
@@ -447,6 +475,25 @@ fun AppConfigDialog(
 				Text(stringResource(R.string.action_cancel))
 			}
 		}
+	)
+}
+
+@Composable
+fun ServiceDisabledBanner(onClick: () -> Unit) {
+	val message = stringResource(R.string.service_disabled)
+	Text(
+		text = message,
+		color = MaterialTheme.colorScheme.onErrorContainer,
+		fontSize = 16.sp,
+		modifier = Modifier
+			.fillMaxWidth()
+			.background(MaterialTheme.colorScheme.errorContainer)
+			.clickable(onClick = onClick)
+			.padding(16.dp)
+			.clearAndSetSemantics {
+				contentDescription = message
+				role = Role.Button
+			}
 	)
 }
 

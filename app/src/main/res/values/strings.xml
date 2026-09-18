@@ -2,7 +2,7 @@
 	<string name="app_name">NVGT Bridge</string>
 	<string name="tile_label">Bridge Toggle</string>
 	<string name="accessibility_service_description">Automatically bridges the gap between TalkBack and audio games. Enables Direct Touch when you enter a supported game and restores TalkBack for menus and keyboards.</string>
-	<string name="title_direct_touch_apps">Direct Touch Apps</string>
+	<string name="service_disabled">NVGT Bridge is off. Tap to turn it on.</string>
 	<string name="action_more_options">More options</string>
 	<string name="action_backup">Backup Settings</string>
 	<string name="action_restore">Restore Settings</string>
