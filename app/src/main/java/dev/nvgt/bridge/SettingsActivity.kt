@@ -125,7 +125,9 @@ class SettingsActivity : ComponentActivity() {
 
 			val tempAppList = mutableListOf<AppInfo>()
 			val newEnabledSet = enabledApps.toMutableSet()
-			var newNativeAppsFound = false
+			val seenNativeApps = prefs.getStringSet("seen_native_packages", emptySet())?.toMutableSet() ?: mutableSetOf()
+			var seenChanged = false
+			var enabledChanged = false
 
 			for (packageInfo in packages) {
 				if (pm.getLaunchIntentForPackage(packageInfo.packageName) != null) {
@@ -134,11 +136,13 @@ class SettingsActivity : ComponentActivity() {
 
 					var isEnabled = newEnabledSet.contains(packageName)
 
-					if (!isEnabled) {
-						if (NvgtUtils.hasNvgtSupport(pm, packageName)) {
+					if (!seenNativeApps.contains(packageName) && NvgtUtils.hasNvgtSupport(pm, packageName)) {
+						seenNativeApps.add(packageName)
+						seenChanged = true
+						if (!isEnabled) {
 							isEnabled = true
 							newEnabledSet.add(packageName)
-							newNativeAppsFound = true
+							enabledChanged = true
 						}
 					}
 
@@ -148,7 +152,11 @@ class SettingsActivity : ComponentActivity() {
 				}
 			}
 
-			if (newNativeAppsFound) {
+			if (seenChanged) {
+				prefs.edit().putStringSet("seen_native_packages", seenNativeApps).apply()
+			}
+
+			if (enabledChanged) {
 				withContext(Dispatchers.Main) {
 					enabledApps = newEnabledSet
 					saveEnabledApps()
@@ -183,6 +191,10 @@ class SettingsActivity : ComponentActivity() {
 				val appsArray = JSONArray()
 				enabledApps.forEach { appsArray.put(it) }
 				root.put("enabled_apps", appsArray)
+
+				val seenArray = JSONArray()
+				prefs.getStringSet("seen_native_packages", emptySet())?.forEach { seenArray.put(it) }
+				root.put("seen_native_apps", seenArray)
 
 				root.put("haptics_enabled", prefs.getBoolean("haptics_enabled", true))
 
@@ -235,6 +247,15 @@ class SettingsActivity : ComponentActivity() {
 					withContext(Dispatchers.Main) {
 						enabledApps = newEnabledApps
 					}
+				}
+
+				if (root.has("seen_native_apps")) {
+					val seenArray = root.getJSONArray("seen_native_apps")
+					val restoredSeen = mutableSetOf<String>()
+					for (i in 0 until seenArray.length()) {
+						restoredSeen.add(seenArray.getString(i))
+					}
+					editor.putStringSet("seen_native_packages", restoredSeen)
 				}
 
 				if (root.has("haptics_enabled")) {

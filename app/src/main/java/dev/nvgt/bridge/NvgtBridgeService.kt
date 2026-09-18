@@ -28,6 +28,7 @@ class NvgtBridgeService : AccessibilityService() {
 	companion object {
 		private const val PREFS_NAME = "nvgt_bridge_prefs"
 		private const val KEY_ENABLED_APPS = "enabled_app_packages"
+		private const val KEY_SEEN_NATIVE_APPS = "seen_native_packages"
 		private const val KEY_MASTER_SWITCH = "master_switch"
 		private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
 		private const val DEBOUNCE_DELAY = 150L
@@ -264,15 +265,26 @@ class NvgtBridgeService : AccessibilityService() {
 	private fun shouldEnableBridgeForPackage(packageName: String): Boolean {
 		targetCache[packageName]?.let { return it }
 
-		val enabledPackages = prefs.getStringSet(KEY_ENABLED_APPS, emptySet())
-		if (enabledPackages?.contains(packageName) == true) {
+		val enabledPackages = prefs.getStringSet(KEY_ENABLED_APPS, emptySet()) ?: emptySet()
+		if (enabledPackages.contains(packageName)) {
 			targetCache[packageName] = true
 			return true
 		}
-
-		val isNvgt = NvgtUtils.hasNvgtSupport(packageManager, packageName)
-		targetCache[packageName] = isNvgt
-		return isNvgt
+		val seenPackages = prefs.getStringSet(KEY_SEEN_NATIVE_APPS, emptySet()) ?: emptySet()
+		if (seenPackages.contains(packageName)) {
+			targetCache[packageName] = false
+			return false
+		}
+		if (!NvgtUtils.hasNvgtSupport(packageManager, packageName)) {
+			targetCache[packageName] = false
+			return false
+		}
+		prefs.edit()
+			.putStringSet(KEY_SEEN_NATIVE_APPS, seenPackages + packageName)
+			.putStringSet(KEY_ENABLED_APPS, enabledPackages + packageName)
+			.apply()
+		targetCache[packageName] = true
+		return true
 	}
 
 	private fun isDirectTypingEnabled(packageName: String): Boolean {
