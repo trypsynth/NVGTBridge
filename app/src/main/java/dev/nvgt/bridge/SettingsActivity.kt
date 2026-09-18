@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -14,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,13 +23,13 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,7 +68,9 @@ class SettingsActivity : ComponentActivity() {
 		}
 
 		setContent {
-			MaterialTheme {
+			MaterialTheme(
+				colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+			) {
 				SettingsScreen(
 					hapticsEnabled = hapticsEnabled,
 					onHapticsChanged = { enabled ->
@@ -78,12 +80,11 @@ class SettingsActivity : ComponentActivity() {
 					searchQuery = searchQuery,
 					onSearchQueryChanged = { query -> searchQuery = query },
 					appsList = appsList,
-					enabledApps = enabledApps,
 					onAppToggle = { app, isEnabled ->
 						toggleApp(app, isEnabled)
 					},
-					onAppConfigure = { app ->
-						showAppConfigDialog(app)
+					onDirectTypingChanged = { app, isEnabled ->
+						setDirectTyping(app, isEnabled)
 					},
 					onBackup = { uri -> performBackup(uri) },
 					onRestore = { uri -> performRestore(uri) }
@@ -93,7 +94,6 @@ class SettingsActivity : ComponentActivity() {
 	}
 
 	private fun toggleApp(app: AppInfo, isEnabled: Boolean) {
-		app.isEnabled = isEnabled
 		val newEnabledApps = enabledApps.toMutableSet()
 		if (isEnabled) {
 			newEnabledApps.add(app.packageName)
@@ -102,41 +102,19 @@ class SettingsActivity : ComponentActivity() {
 		}
 		enabledApps = newEnabledApps
 		saveEnabledApps()
-		
 		val index = appsList.indexOfFirst { it.packageName == app.packageName }
 		if (index != -1) {
-			appsList[index] = app.copy(isEnabled = isEnabled)
+			appsList[index] = appsList[index].copy(isEnabled = isEnabled)
 		}
 	}
 
-	private fun showAppConfigDialog(app: AppInfo) {
+	private fun setDirectTyping(app: AppInfo, isEnabled: Boolean) {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
-		val keyDirectTyping = "direct_typing_${app.packageName}"
-		var isDirectTyping = prefs.getBoolean(keyDirectTyping, false)
-
-		val builder = android.app.AlertDialog.Builder(this)
-		builder.setTitle("Configure settings for ${app.name}")
-		
-		val options = arrayOf("Direct Typing (Don't cut out keyboard)")
-		val checkedItems = booleanArrayOf(isDirectTyping)
-
-		builder.setMultiChoiceItems(options, checkedItems) { _, which, isChecked ->
-			if (which == 0) {
-				isDirectTyping = isChecked
-			}
+		prefs.edit().putBoolean("direct_typing_${app.packageName}", isEnabled).apply()
+		val index = appsList.indexOfFirst { it.packageName == app.packageName }
+		if (index != -1) {
+			appsList[index] = appsList[index].copy(directTyping = isEnabled)
 		}
-
-		builder.setPositiveButton("Save") { _, _ ->
-			prefs.edit().putBoolean(keyDirectTyping, isDirectTyping).apply()
-			app.directTyping = isDirectTyping
-			val index = appsList.indexOfFirst { it.packageName == app.packageName }
-			if (index != -1) {
-				appsList[index] = app.copy(directTyping = isDirectTyping)
-			}
-		}
-
-		builder.setNegativeButton("Cancel", null)
-		builder.show()
 	}
 
 	private suspend fun loadInstalledApps() {
@@ -144,19 +122,18 @@ class SettingsActivity : ComponentActivity() {
 			val pm = packageManager
 			val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
 			val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
-			
+
 			val tempAppList = mutableListOf<AppInfo>()
 			val newEnabledSet = enabledApps.toMutableSet()
 			var newNativeAppsFound = false
-			
+
 			for (packageInfo in packages) {
 				if (pm.getLaunchIntentForPackage(packageInfo.packageName) != null) {
 					val appName = packageInfo.loadLabel(pm).toString()
-					val appIcon = packageInfo.loadIcon(pm)
 					val packageName = packageInfo.packageName
-					
+
 					var isEnabled = newEnabledSet.contains(packageName)
-					
+
 					if (!isEnabled) {
 						if (NvgtUtils.hasNvgtSupport(pm, packageName)) {
 							isEnabled = true
@@ -164,13 +141,13 @@ class SettingsActivity : ComponentActivity() {
 							newNativeAppsFound = true
 						}
 					}
-					
+
 					val directTyping = prefs.getBoolean("direct_typing_$packageName", false)
 
-					tempAppList.add(AppInfo(appName, packageName, appIcon, isEnabled, directTyping))
+					tempAppList.add(AppInfo(appName, packageName, isEnabled, directTyping))
 				}
 			}
-			
+
 			if (newNativeAppsFound) {
 				withContext(Dispatchers.Main) {
 					enabledApps = newEnabledSet
@@ -179,7 +156,7 @@ class SettingsActivity : ComponentActivity() {
 			}
 
 			tempAppList.sortBy { it.name }
-			
+
 			withContext(Dispatchers.Main) {
 				appsList.clear()
 				appsList.addAll(tempAppList)
@@ -202,11 +179,11 @@ class SettingsActivity : ComponentActivity() {
 			try {
 				val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 				val root = JSONObject()
-				
+
 				val appsArray = JSONArray()
 				enabledApps.forEach { appsArray.put(it) }
 				root.put("enabled_apps", appsArray)
-				
+
 				root.put("haptics_enabled", prefs.getBoolean("haptics_enabled", true))
 
 				val directTypingObj = JSONObject()
@@ -300,9 +277,8 @@ fun SettingsScreen(
 	searchQuery: String,
 	onSearchQueryChanged: (String) -> Unit,
 	appsList: List<AppInfo>,
-	enabledApps: Set<String>,
 	onAppToggle: (AppInfo, Boolean) -> Unit,
-	onAppConfigure: (AppInfo) -> Unit,
+	onDirectTypingChanged: (AppInfo, Boolean) -> Unit,
 	onBackup: (Uri) -> Unit,
 	onRestore: (Uri) -> Unit
 ) {
@@ -319,31 +295,37 @@ fun SettingsScreen(
 	}
 
 	var showMenu by remember { mutableStateOf(false) }
+	var configPackage by rememberSaveable { mutableStateOf<String?>(null) }
+	val backupFileName = stringResource(R.string.backup_file_name)
 
 	Scaffold(
 		topBar = {
 			TopAppBar(
-				title = { Text("Direct Touch Apps", color = Color.White) },
-				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary),
+				title = { Text(stringResource(R.string.title_direct_touch_apps)) },
+				colors = TopAppBarDefaults.topAppBarColors(
+					containerColor = MaterialTheme.colorScheme.primary,
+					titleContentColor = MaterialTheme.colorScheme.onPrimary,
+					actionIconContentColor = MaterialTheme.colorScheme.onPrimary
+				),
 				actions = {
 					IconButton(onClick = { showMenu = !showMenu }) {
-						Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color.White)
+						Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
 					}
 					DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
 						DropdownMenuItem(
-							text = { Text("Backup Settings") },
+							text = { Text(stringResource(R.string.action_backup)) },
 							onClick = {
 								showMenu = false
 								val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
 									addCategory(Intent.CATEGORY_OPENABLE)
 									type = "application/json"
-									putExtra(Intent.EXTRA_TITLE, "nvgt_bridge_backup.json")
+									putExtra(Intent.EXTRA_TITLE, backupFileName)
 								}
 								backupLauncher.launch(intent)
 							}
 						)
 						DropdownMenuItem(
-							text = { Text("Restore Settings") },
+							text = { Text(stringResource(R.string.action_restore)) },
 							onClick = {
 								showMenu = false
 								val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -359,18 +341,22 @@ fun SettingsScreen(
 		}
 	) { padding ->
 		Column(modifier = Modifier.padding(padding)) {
+			val hapticsLabel = stringResource(R.string.label_haptics)
+			val hapticsState = stringResource(if (hapticsEnabled) R.string.switch_on else R.string.switch_off)
+			val hapticsDescription = stringResource(R.string.a11y_switch, hapticsLabel, hapticsState)
+
 			Row(
 				modifier = Modifier
 					.fillMaxWidth()
 					.clickable { onHapticsChanged(!hapticsEnabled) }
 					.padding(16.dp)
 					.clearAndSetSemantics {
-						contentDescription = "Enable Haptic Feedback, ${if (hapticsEnabled) "on" else "off"}"
+						contentDescription = hapticsDescription
 						role = Role.Switch
 					},
 				verticalAlignment = Alignment.CenterVertically
 			) {
-				Text("Enable Haptic Feedback", modifier = Modifier.weight(1f), fontSize = 18.sp)
+				Text(hapticsLabel, modifier = Modifier.weight(1f), fontSize = 18.sp)
 				Switch(checked = hapticsEnabled, onCheckedChange = null)
 			}
 
@@ -380,7 +366,7 @@ fun SettingsScreen(
 				modifier = Modifier
 					.fillMaxWidth()
 					.padding(horizontal = 16.dp),
-				placeholder = { Text("Search Apps") },
+				placeholder = { Text(stringResource(R.string.label_search)) },
 				leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
 				singleLine = true
 			)
@@ -394,14 +380,14 @@ fun SettingsScreen(
 			val enabled = filteredApps.filter { it.isEnabled }.sortedBy { it.name }
 			val disabled = filteredApps.filter { !it.isEnabled }.sortedBy { it.name }
 
-			val items = mutableListOf<AppListItem>()
+			val listItems = mutableListOf<AppListItem>()
 			if (enabled.isNotEmpty()) {
-				items.add(AppListItem.Header("Direct Touch Enabled Apps"))
-				items.addAll(enabled.map { AppListItem.App(it) })
+				listItems.add(AppListItem.Header(stringResource(R.string.header_enabled_apps)))
+				listItems.addAll(enabled.map { AppListItem.App(it) })
 			}
 			if (disabled.isNotEmpty()) {
-				items.add(AppListItem.Header("All Apps"))
-				items.addAll(disabled.map { AppListItem.App(it) })
+				listItems.add(AppListItem.Header(stringResource(R.string.header_all_apps)))
+				listItems.addAll(disabled.map { AppListItem.App(it) })
 			}
 
 			val lazyListState = rememberLazyListState()
@@ -413,24 +399,86 @@ fun SettingsScreen(
 					.semantics {
 						verticalScrollAxisRange = ScrollAxisRange(
 							value = { lazyListState.firstVisibleItemIndex.toFloat() },
-							maxValue = { (items.size - 1).coerceAtLeast(0).toFloat() }
+							maxValue = { (listItems.size - 1).coerceAtLeast(0).toFloat() }
 						)
-						collectionInfo = CollectionInfo(rowCount = items.size, columnCount = 1)
+						collectionInfo = CollectionInfo(rowCount = listItems.size, columnCount = 1)
 					}
 			) {
-				items(items) { item ->
+				items(
+					items = listItems,
+					key = { item ->
+						when (item) {
+							is AppListItem.Header -> "header:${item.title}"
+							is AppListItem.App -> "app:${item.appInfo.packageName}"
+						}
+					}
+				) { item ->
 					when (item) {
 						is AppListItem.Header -> HeaderRow(item.title)
 						is AppListItem.App -> AppRow(
 							appInfo = item.appInfo,
 							onToggle = { isEnabled -> onAppToggle(item.appInfo, isEnabled) },
-							onConfigure = { onAppConfigure(item.appInfo) }
+							onConfigure = { configPackage = item.appInfo.packageName }
 						)
 					}
 				}
 			}
 		}
 	}
+
+	val configTarget = configPackage?.let { pkg -> appsList.firstOrNull { it.packageName == pkg } }
+	if (configTarget != null) {
+		AppConfigDialog(
+			appInfo = configTarget,
+			onDismiss = { configPackage = null },
+			onSave = { directTyping ->
+				onDirectTypingChanged(configTarget, directTyping)
+				configPackage = null
+			}
+		)
+	}
+}
+
+@Composable
+fun AppConfigDialog(
+	appInfo: AppInfo,
+	onDismiss: () -> Unit,
+	onSave: (Boolean) -> Unit
+) {
+	var directTyping by rememberSaveable(appInfo.packageName) { mutableStateOf(appInfo.directTyping) }
+	val label = stringResource(R.string.label_direct_typing)
+	val state = stringResource(if (directTyping) R.string.switch_on else R.string.switch_off)
+	val description = stringResource(R.string.a11y_switch, label, state)
+
+	AlertDialog(
+		onDismissRequest = onDismiss,
+		title = { Text(stringResource(R.string.config_title, appInfo.name)) },
+		text = {
+			Row(
+				modifier = Modifier
+					.fillMaxWidth()
+					.clickable { directTyping = !directTyping }
+					.clearAndSetSemantics {
+						contentDescription = description
+						role = Role.Switch
+					},
+				verticalAlignment = Alignment.CenterVertically
+			) {
+				Text(label, modifier = Modifier.weight(1f))
+				Switch(checked = directTyping, onCheckedChange = null)
+			}
+		},
+		confirmButton = {
+			TextButton(onClick = { onSave(directTyping) }) {
+				Text(stringResource(R.string.action_save))
+			}
+		},
+		dismissButton = {
+			TextButton(onClick = onDismiss) {
+				Text(stringResource(R.string.action_cancel))
+			}
+		}
+	)
 }
 
 @Composable
@@ -453,7 +501,10 @@ fun AppRow(
 	onToggle: (Boolean) -> Unit,
 	onConfigure: () -> Unit
 ) {
-	val painter = rememberDrawablePainter(appInfo.icon)
+	val icon = rememberAppIcon(appInfo.packageName)
+	val state = stringResource(if (appInfo.isEnabled) R.string.switch_on else R.string.switch_off)
+	val description = stringResource(R.string.a11y_switch, appInfo.name, state)
+	val configureLabel = stringResource(R.string.config_title, appInfo.name)
 
 	Row(
 		modifier = Modifier
@@ -461,11 +512,10 @@ fun AppRow(
 			.clickable { onToggle(!appInfo.isEnabled) }
 			.padding(16.dp)
 			.clearAndSetSemantics {
-				val stateText = if (appInfo.isEnabled) "on" else "off"
-				contentDescription = "${appInfo.name}, $stateText"
+				contentDescription = description
 				role = Role.Switch
 				customActions = listOf(
-					CustomAccessibilityAction("Configure settings for ${appInfo.name}") {
+					CustomAccessibilityAction(configureLabel) {
 						onConfigure()
 						true
 					}
@@ -473,11 +523,15 @@ fun AppRow(
 			},
 		verticalAlignment = Alignment.CenterVertically
 	) {
-		Image(
-			painter = painter,
-			contentDescription = null,
-			modifier = Modifier.size(48.dp)
-		)
+		if (icon != null) {
+			Image(
+				bitmap = icon,
+				contentDescription = null,
+				modifier = Modifier.size(48.dp)
+			)
+		} else {
+			Spacer(modifier = Modifier.size(48.dp))
+		}
 		Spacer(modifier = Modifier.width(16.dp))
 		Text(
 			text = appInfo.name,
@@ -492,8 +546,15 @@ fun AppRow(
 }
 
 @Composable
-fun rememberDrawablePainter(drawable: Drawable): Painter {
-	return remember(drawable) {
-		BitmapPainter(drawable.toBitmap().asImageBitmap())
+fun rememberAppIcon(packageName: String): ImageBitmap? {
+	val context = LocalContext.current
+	var icon by remember(packageName) { mutableStateOf<ImageBitmap?>(null) }
+	LaunchedEffect(packageName) {
+		icon = withContext(Dispatchers.IO) {
+			runCatching {
+				context.packageManager.getApplicationIcon(packageName).toBitmap().asImageBitmap()
+			}.getOrNull()
+		}
 	}
+	return icon
 }

@@ -1,11 +1,8 @@
 package dev.nvgt.bridge
 
-import android.graphics.drawable.Drawable
-
 data class AppInfo(
 	val name: String,
 	val packageName: String,
-	val icon: Drawable,
-	var isEnabled: Boolean,
-	var directTyping: Boolean
+	val isEnabled: Boolean,
+	val directTyping: Boolean
 )

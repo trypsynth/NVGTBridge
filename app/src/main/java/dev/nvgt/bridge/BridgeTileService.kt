@@ -25,8 +25,8 @@ class BridgeTileService : TileService() {
 		val isActive = prefs.getBoolean("master_switch", true)
 		val tile = qsTile ?: return
 		tile.state = if (isActive) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-		tile.label = if (isActive) "Bridge ON" else "Bridge OFF"
-		tile.contentDescription = if (isActive) "Bridge is Active. Double tap to disable." else "Bridge is Paused. Double tap to enable."
+		tile.label = getString(if (isActive) R.string.tile_on else R.string.tile_off)
+		tile.contentDescription = getString(if (isActive) R.string.tile_description_on else R.string.tile_description_off)
 		
 		tile.updateTile()
 	}
