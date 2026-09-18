@@ -170,7 +170,6 @@ class SettingsActivity : ComponentActivity() {
 					saveEnabledApps()
 				}
 			}
-			tempAppList.sortBy { it.name }
 			withContext(Dispatchers.Main) {
 				appsList.clear()
 				appsList.addAll(tempAppList)
