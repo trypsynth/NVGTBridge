@@ -4,7 +4,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
 	alias(libs.plugins.android.application)
-	alias(libs.plugins.kotlin.android)
 	alias(libs.plugins.compose.compiler)
 }
 
@@ -20,12 +19,12 @@ val canSignRelease = releaseKeystore.exists() && releaseKeystorePassword != null
 
 android {
 	namespace = "dev.nvgt.bridge"
-	compileSdk = 36
+	compileSdk = 37
 
 	defaultConfig {
 		applicationId = "dev.nvgt.bridge"
 		minSdk = 30
-		targetSdk = 36
+		targetSdk = 37
 		versionCode = 3
 		versionName = "1.2"
 
@@ -81,6 +80,7 @@ dependencies {
 	implementation(libs.androidx.ui.graphics)
 	implementation(libs.androidx.ui.tooling.preview)
 	implementation(libs.androidx.material3)
+	implementation(libs.androidx.material.icons.core)
 	implementation(libs.androidx.activity.compose)
 	debugImplementation(libs.androidx.ui.tooling)
 
