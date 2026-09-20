@@ -1,71 +1,105 @@
 # NVGT Bridge
 
-NVGT Bridge is an Android Accessibility Service designed to seamlessly bridge the gap between TalkBack (or other screen readers) and audio games that require direct touch interaction.
+NVGT Bridge is an Android accessibility service for audio games written in [NVGT](https://nvgt.gg).
 
-It automatically disables "Explore by Touch" when you are inside a supported game, allowing you to use game-specific gestures (like swipes and taps) instantly. Crucially, it remains context-aware: if a keyboard or a dialog appears, standard screen reader gestures are immediately restored so you are never stuck.
+Audio games need direct touch. A screen reader such as TalkBack captures your taps and swipes for Explore by Touch, so the game never receives them. NVGT Bridge turns Explore by Touch off while you are in a game, and turns it back on the moment a menu, a dialog or the keyboard appears. You do not have to suspend TalkBack or turn it off.
 
+## Requirements
 
-## For Users
+* Android 11 or later
+* TalkBack, or another screen reader that uses Explore by Touch
 
-### How to Install & Setup
+## Install
 
-Since this is a system utility, it does not appear in your app drawer. You must configure it through Android Settings.
+NVGT Bridge is not on Google Play yet, so you install it from an APK.
 
-#### 1. Install the APK
+Android applies extra restrictions to sideloaded apps that request accessibility permissions. To avoid them, install with one of these:
 
-Download the NVGT Bridge APK.
+* **ADB**: `adb install nvgt-bridge.apk`
+* **A session based installer**, such as App Manager from F-Droid. These use the `PackageInstaller` session API, which most file managers do not.
 
-> **Note on Installation:** Android's "Play Protect" may flag this app because it uses high-level accessibility permissions. Furthermore, standard package installers might trigger "Restricted Settings" on newer Android versions. To ensure the service can be enabled, it is highly recommended to use a **Session-Based Installer** (such as the "App Manager" app from F-Droid or GitHub). These installers use the modern Android `PackageInstaller` session API, which helps bypass some security restrictions.
-You can also use **ADB** directly. 
+If you install another way and the accessibility switch is greyed out with **"Restricted setting"**, do this:
 
+1. Open **Settings > Apps**.
+2. Select **NVGT Bridge**.
+3. Open the menu in the top right corner.
+4. Select **Allow restricted settings** and confirm.
 
-#### 2. Allow Restricted Settings (If Necessary)
+## Set up
 
-On Android 13 and newer, you might see an error saying **"Restricted setting: For your security, this setting is currently unavailable"** when trying to turn on the service. To fix this:
+1. Open **Settings > Accessibility**.
+2. Select **NVGT Bridge** and turn the switch on.
+3. Open the app from your app drawer, or select **Settings** on the same Accessibility page.
+4. Find your games in the list and turn each one on.
 
-1. Open your phone **Settings**.
-2. Go to **Apps** (or **See all apps**).
-3. Find **NVGT Bridge** in the list and tap it.
-4. In the top right corner, tap the more options button.
-5. Tap **Allow restricted settings**.
-6. Confirm with your PIN or fingerprint. You can now enable the service in the Accessibility menu.
+Games that declare native support (see below) are turned on for you the first time NVGT Bridge sees them. After that your choice is remembered, so you can turn one off and it stays off.
 
-#### 3. Enable the Service
+## How it works
 
-1. Go to **Settings > Accessibility**.
-2. Find **NVGT Bridge** in the list of downloaded services.
-3. Turn the switch **ON**.
+While you are in a game you enabled, NVGT Bridge passes your touches straight to the game. It gives control back to your screen reader when:
 
-#### 4. Select Your Games
+* a dialog or a text field appears
+* the keyboard opens
+* you open the notification shade or the quick settings panel
+* another app opens on top of the game
+* the screen turns off
 
-1. Stay on the NVGT Bridge page in Accessibility settings.
-2. Tap on **Settings**.
-3. Find your audio games in the list eg constant motion or endless runner and toggle the switch to **ON**.
+## Settings
 
-### How it Works
+* **Per app switch**: choose which games get direct touch.
+* **Direct typing**: by default the keyboard area keeps working with your screen reader. Turn this on for a game that draws its own keyboard. Use the **Configure** action on any app in the list.
+* **Haptic feedback**: a short vibration when direct touch turns on and off. Off by default.
+* **Quick settings tile**: add the **Bridge Toggle** tile to pause and resume NVGT Bridge without leaving your game.
+* **Backup and restore**: save your settings to a JSON file and load them on another device. Use the menu in the top right corner.
 
-* **Automatic Mode:** When you open a game you have enabled, the Bridge automatically lets you touch the screen directly. You don't need to suspend or tirn TalkBack off manually.
-* **Safety Features:** TalkBack resumes normal behavior if you open the keyboard, pull down notifications, or lock the screen.
+## For game developers
 
----
+Add native support so your players do not have to find your game in the list and turn it on.
 
-## For Developers
-
-If you are developing an audio game, you can add **Native Support** so users don't have to manually find your app in the NVGT Bridge apps list and enable it.
-
-### How to Add Native Support
-
-Add the following `<meta-data>` tag to your `AndroidManifest.xml` inside either the `<application>` or `<activity>` block:
+Add this `<meta-data>` tag to your `AndroidManifest.xml`, inside either `<application>` or your main `<activity>`:
 
 ```xml
 <meta-data
 	android:name="dev.nvgt.capability.DIRECT_TOUCH"
 	android:value="true" />
-
 ```
 
----
+NVGT Bridge turns your game on the first time it sees it. The player can still turn it off if they want to.
 
-## Known Issues & Planned Features
+## Build
 
-Nothing! Feel free to open issues if you want something to be added!
+```sh
+git clone https://github.com/trypsynth/nvgt-bridge.git
+cd nvgt-bridge
+./gradlew assembleDebug
+```
+
+To build a signed release, put a keystore at `keys/release.jks` with the key alias `nvgt`, and put its password in `local.properties`:
+
+```properties
+store.password=your-password
+```
+
+Without those, `./gradlew assembleRelease` still works and produces an unsigned APK.
+
+Run the tests:
+
+```sh
+./gradlew testDebugUnitTest          # unit tests
+./gradlew connectedDebugAndroidTest  # instrumented tests, needs a device
+```
+
+## Known issues
+
+* The app is not on Google Play yet, so you have to sideload it.
+* NVGT Bridge looks for dialogs and text fields up to five levels deep in the view tree. A game that nests a text field deeper than that may not give control back to your screen reader on its own. Use the quick settings tile to pause NVGT Bridge if this happens.
+
+Please open an issue if you find something else, or if you want a feature added.
+
+## Credits
+
+NVGT Bridge was written by [Aryan Choudhary](https://github.com/aryanchoudharypro), who transferred the project to its current maintainer.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
