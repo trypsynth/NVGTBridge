@@ -22,6 +22,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import androidx.core.content.edit
 
 class NvgtBridgeService : AccessibilityService() {
 
@@ -259,10 +260,10 @@ class NvgtBridgeService : AccessibilityService() {
 			targetCache[packageName] = false
 			return false
 		}
-		prefs.edit()
-			.putStringSet(KEY_SEEN_NATIVE_APPS, seenPackages + packageName)
-			.putStringSet(KEY_ENABLED_APPS, enabledPackages + packageName)
-			.apply()
+		prefs.edit {
+			putStringSet(KEY_SEEN_NATIVE_APPS, seenPackages + packageName)
+			putStringSet(KEY_ENABLED_APPS, enabledPackages + packageName)
+		}
 		targetCache[packageName] = true
 		return true
 	}

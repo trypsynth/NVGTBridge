@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -74,7 +75,7 @@ class SettingsActivity : ComponentActivity() {
 					hapticsEnabled = hapticsEnabled,
 					onHapticsChanged = { enabled ->
 						hapticsEnabled = enabled
-						prefs.edit().putBoolean("haptics_enabled", enabled).apply()
+						prefs.edit { putBoolean("haptics_enabled", enabled) }
 					},
 					searchQuery = searchQuery,
 					onSearchQueryChanged = { query -> searchQuery = query },
@@ -125,7 +126,7 @@ class SettingsActivity : ComponentActivity() {
 
 	private fun setDirectTyping(app: AppInfo, isEnabled: Boolean) {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
-		prefs.edit().putBoolean("direct_typing_${app.packageName}", isEnabled).apply()
+		prefs.edit { putBoolean("direct_typing_${app.packageName}", isEnabled) }
 		val index = appsList.indexOfFirst { it.packageName == app.packageName }
 		if (index != -1) {
 			appsList[index] = appsList[index].copy(directTyping = isEnabled)
@@ -162,7 +163,7 @@ class SettingsActivity : ComponentActivity() {
 				}
 			}
 			if (seenChanged) {
-				prefs.edit().putStringSet("seen_native_packages", seenNativeApps).apply()
+				prefs.edit { putStringSet("seen_native_packages", seenNativeApps) }
 			}
 			if (enabledChanged) {
 				withContext(Dispatchers.Main) {
@@ -179,7 +180,7 @@ class SettingsActivity : ComponentActivity() {
 
 	private fun saveEnabledApps() {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", MODE_PRIVATE)
-		prefs.edit().putStringSet("enabled_app_packages", enabledApps).apply()
+		prefs.edit { putStringSet("enabled_app_packages", enabledApps) }
 	}
 
 	private fun loadEnabledApps() {
@@ -233,43 +234,43 @@ class SettingsActivity : ComponentActivity() {
 				}
 				val root = JSONObject(stringBuilder.toString())
 				val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
-				val editor = prefs.edit()
-				if (root.has("enabled_apps")) {
-					val appsArray = root.getJSONArray("enabled_apps")
-					val newEnabledApps = mutableSetOf<String>()
-					for (i in 0 until appsArray.length()) {
-						newEnabledApps.add(appsArray.getString(i))
+				var restoredEnabled: Set<String>? = null
+				var restoredHaptics: Boolean? = null
+				prefs.edit {
+					if (root.has("enabled_apps")) {
+						val appsArray = root.getJSONArray("enabled_apps")
+						val newEnabledApps = mutableSetOf<String>()
+						for (i in 0 until appsArray.length()) {
+							newEnabledApps.add(appsArray.getString(i))
+						}
+						putStringSet("enabled_app_packages", newEnabledApps)
+						restoredEnabled = newEnabledApps
 					}
-					editor.putStringSet("enabled_app_packages", newEnabledApps)
-					withContext(Dispatchers.Main) {
-						enabledApps = newEnabledApps
+					if (root.has("seen_native_apps")) {
+						val seenArray = root.getJSONArray("seen_native_apps")
+						val restoredSeen = mutableSetOf<String>()
+						for (i in 0 until seenArray.length()) {
+							restoredSeen.add(seenArray.getString(i))
+						}
+						putStringSet("seen_native_packages", restoredSeen)
+					}
+					if (root.has("haptics_enabled")) {
+						val enabled = root.getBoolean("haptics_enabled")
+						putBoolean("haptics_enabled", enabled)
+						restoredHaptics = enabled
+					}
+					if (root.has("direct_typing")) {
+						val directTypingObj = root.getJSONObject("direct_typing")
+						val keys = directTypingObj.keys()
+						while (keys.hasNext()) {
+							val key = keys.next()
+							putBoolean(key, directTypingObj.getBoolean(key))
+						}
 					}
 				}
-				if (root.has("seen_native_apps")) {
-					val seenArray = root.getJSONArray("seen_native_apps")
-					val restoredSeen = mutableSetOf<String>()
-					for (i in 0 until seenArray.length()) {
-						restoredSeen.add(seenArray.getString(i))
-					}
-					editor.putStringSet("seen_native_packages", restoredSeen)
-				}
-				if (root.has("haptics_enabled")) {
-					val enabled = root.getBoolean("haptics_enabled")
-					editor.putBoolean("haptics_enabled", enabled)
-					withContext(Dispatchers.Main) {
-						hapticsEnabled = enabled
-					}
-				}
-				if (root.has("direct_typing")) {
-					val directTypingObj = root.getJSONObject("direct_typing")
-					val keys = directTypingObj.keys()
-					while (keys.hasNext()) {
-						val key = keys.next()
-						editor.putBoolean(key, directTypingObj.getBoolean(key))
-					}
-				}
-				editor.apply()
 				withContext(Dispatchers.Main) {
+					restoredEnabled?.let { enabledApps = it }
+					restoredHaptics?.let { hapticsEnabled = it }
 					loadInstalledApps()
 					Toast.makeText(this@SettingsActivity, R.string.restore_success, Toast.LENGTH_SHORT).show()
 				}

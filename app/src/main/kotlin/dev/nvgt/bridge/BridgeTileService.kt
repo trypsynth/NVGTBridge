@@ -3,6 +3,7 @@ package dev.nvgt.bridge
 import android.content.Context
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import androidx.core.content.edit
 
 class BridgeTileService : TileService() {
 
@@ -15,7 +16,7 @@ class BridgeTileService : TileService() {
 		val prefs = getSharedPreferences("nvgt_bridge_prefs", Context.MODE_PRIVATE)
 		val currentState = prefs.getBoolean("master_switch", true)
 		val newState = !currentState
-		prefs.edit().putBoolean("master_switch", newState).apply()
+		prefs.edit { putBoolean("master_switch", newState) }
 		updateTileState()
 	}
 
