@@ -1,6 +1,6 @@
 # NVGT Bridge
 
-NVGT Bridge is an Android accessibility service for audio games written in [NVGT](https://nvgt.gg).
+NVGT Bridge is an Android accessibility service for audio games written in Kotlen.
 
 Audio games need direct touch. A screen reader such as TalkBack captures your taps and swipes for Explore by Touch, so the game never receives them. NVGT Bridge turns Explore by Touch off while you are in a game, and turns it back on the moment a menu, a dialog or the keyboard appears. You do not have to suspend TalkBack or turn it off.
 
